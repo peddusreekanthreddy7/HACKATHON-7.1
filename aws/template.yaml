@@ -1,0 +1,46 @@
+# AWS SAM template (STUB — finalised + deployed in Phase 6).
+# Deploy: sam build && sam deploy --guided
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DatalakeFaceAuth offline-attendance sync backend (stub).
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 10
+    MemorySize: 256
+
+Resources:
+  AttendanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST # scales to zero; scales out automatically
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  IngestAttendanceFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: lambda/ingestAttendance/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AttendanceTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref AttendanceTable
+      Events:
+        Ingest:
+          Type: Api
+          Properties:
+            Path: /attendance
+            Method: post
+
+Outputs:
+  ApiBaseUrl:
+    Description: Set this as AWS_API_BASE_URL in the app .env
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod'

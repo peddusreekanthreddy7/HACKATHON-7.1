@@ -1,0 +1,14 @@
+# Model-optimization pipeline — 100% open-source (Apache-2.0 / BSD / MIT).
+#
+# IMPORTANT: TensorFlow has no wheel for Python 3.13 yet. Create the env with
+# Python 3.11 or 3.12:
+#     py -3.11 -m venv .venv  &&  .venv\Scripts\activate   (Windows)
+#     python3.11 -m venv .venv && source .venv/bin/activate (macOS/Linux)
+#     pip install -r ml/requirements.txt
+
+tensorflow==2.15.1               # Apache-2.0  (TFLite converter + Keras)
+tensorflow-model-optimization==0.8.0  # Apache-2.0  (pruning / clustering / QAT)
+numpy==1.26.4                    # BSD-3-Clause
+opencv-python==4.10.0.84         # Apache-2.0  (augmentation, image IO)
+scikit-learn==1.5.1              # BSD-3-Clause (TAR@FAR metrics)
+tqdm==4.66.4                     # MPL-2.0 / MIT

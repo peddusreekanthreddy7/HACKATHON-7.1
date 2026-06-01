@@ -1,0 +1,11 @@
+{
+  "name": "datalake-attendance-sync-fn",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Lambda: idempotent attendance ingest to DynamoDB",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}

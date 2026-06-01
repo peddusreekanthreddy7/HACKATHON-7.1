@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  DatalakeFaceAuth attendance sync backend.
+  API Gateway -> Lambda -> DynamoDB, idempotent by record id.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 10
+    MemorySize: 128
+    Architectures: [arm64]
+
+Resources:
+  AttendanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: datalake-attendance
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      # Optional: auto-expire raw rows after N days once warehoused downstream.
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: false
+
+  SyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: src/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AttendanceTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref AttendanceTable
+      Events:
+        PostAttendance:
+          Type: Api
+          Properties:
+            Path: /attendance
+            Method: post
+
+Outputs:
+  ApiUrl:
+    Description: POST endpoint for the app's sync config (endpointUrl)
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/attendance"
+  TableName:
+    Value: !Ref AttendanceTable
