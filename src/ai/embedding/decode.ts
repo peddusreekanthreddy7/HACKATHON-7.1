@@ -35,10 +35,14 @@ export function l2Normalize(v: Float32Array): Float32Array {
  * float32 embedding. The model's output tensor is passed as ArrayBuffer.
  */
 export function decodeEmbedding(
-  rawBuf: ArrayBuffer,
+  raw: ArrayBuffer | ArrayBufferView,
   config: EmbeddingConfig,
 ): Embedding {
   'worklet';
+  // fast-tflite v2 returns TypedArray views; v3 returned ArrayBuffer. Accept both.
+  const rawBuf: ArrayBuffer = ArrayBuffer.isView(raw)
+    ? (raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)
+    : raw;
   const byteLen = rawBuf.byteLength;
   let vec: Float32Array;
 

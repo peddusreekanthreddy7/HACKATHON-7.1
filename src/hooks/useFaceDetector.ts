@@ -44,23 +44,13 @@ const EMPTY: FaceScanResult = { face: null, brightness: 0, lighting: 'good' };
  *
  * Detection is throttled with `runAtTargetFps` to keep CPU sane on 3 GB
  * devices; every frame is still counted for an honest FPS readout.
- *
- * FIX (Phase 7): models are held in useSharedValue, NOT in useFrameProcessor deps.
- * Putting a Nitro HybridObject (TensorflowModel) directly in useFrameProcessor deps
- * causes vision-camera to call setFrameProcessor while Nitro serialises the closure;
- * that serialisation accesses .outputs/.inputs before NativeState is ready → crash.
- * SharedValues are the cross-runtime container that avoids this path entirely.
  */
 export function useFaceDetector(): FaceDetector {
-  const model = useTensorflowModel(require('../../models/blazeface.tflite'), []);
-
-  // ─── SharedValue holds the loaded model so it is NEVER in useFrameProcessor deps ───
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const modelSV = useSharedValue<any>(null);
-  useEffect(() => {
-    modelSV.value = model.state === 'loaded' ? (model.model ?? null) : null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.state, model.model]);
+  // CPU delegate for a guaranteed load on every device. The 'android-gpu' /
+  // 'core-ml' delegates are the latency win and get enabled + verified in
+  // Phase 3 once measured on device.
+  const model = useTensorflowModel(require('../../models/blazeface.tflite'));
+  const actualModel = model.state === 'loaded' ? model.model : undefined;
 
   const anchors = useMemo(() => generateAnchors(), []);
   const { resize } = useResizePlugin();
@@ -99,23 +89,32 @@ export function useFaceDetector(): FaceDetector {
         const stats = computeBrightness(rgb);
 
         let face: DetectedFace | null = null;
-        // Read model from SharedValue — safe on the worklet thread.
-        const m = modelSV.value;
-        if (m != null) {
+        if (actualModel != null) {
           // Lighting normalization for harsh sun / low light / shadows.
-          const enhanced = enhanceForDetection(rgb, size, size, DEFAULT_ENHANCE_OPTIONS);
+          const enhanced = enhanceForDetection(
+            rgb,
+            size,
+            size,
+            DEFAULT_ENHANCE_OPTIONS,
+          );
           // BlazeFace short-range expects float32 normalized to [-1, 1].
           const input = new Float32Array(enhanced.length);
           for (let i = 0; i < enhanced.length; i++) {
             input[i] = enhanced[i] / 127.5 - 1;
           }
-          const outputs = m.runSync([input.buffer]);
+          const outputs = actualModel.runSync([input]) as Float32Array[];
           if (outputs.length >= 2) {
+            // Regressors tensor is the longer one (anchors*16); scores is anchors.
             const a = new Float32Array(outputs[0]);
             const b = new Float32Array(outputs[1]);
             const regressors = a.length >= b.length ? a : b;
             const scores = a.length >= b.length ? b : a;
-            const faces = decodeFaces(regressors, scores, anchors, DEFAULT_DECODE_OPTIONS);
+            const faces = decodeFaces(
+              regressors,
+              scores,
+              anchors,
+              DEFAULT_DECODE_OPTIONS,
+            );
             if (faces.length > 0) face = faces[0];
           }
         }
@@ -127,9 +126,7 @@ export function useFaceDetector(): FaceDetector {
         });
       });
     },
-    // modelSV is a stable SharedValue reference — its identity never changes,
-    // so setFrameProcessor is called ONCE and stays installed.
-    [modelSV, anchors, resize, onResult, frameCount],
+    [actualModel, anchors, resize, onResult, frameCount],
   );
 
   return { frameProcessor, result, fps, modelState: model.state };
