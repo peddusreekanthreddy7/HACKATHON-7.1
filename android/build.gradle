@@ -4,7 +4,7 @@ buildscript {
         minSdkVersion = 26 // Android 8.0 — hard constraint #1
         compileSdkVersion = 36
         targetSdkVersion = 36
-        ndkVersion = "27.1.12297006"
+        ndkVersion = "27.0.12077973" // any installed r27 NDK works; bump to 27.1.12297006 if you have it
         kotlinVersion = "2.1.20"
     }
     repositories {
