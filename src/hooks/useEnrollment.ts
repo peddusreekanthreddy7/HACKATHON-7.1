@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFrameProcessor, runAtTargetFps } from 'react-native-vision-camera';
 import { useResizePlugin } from 'vision-camera-resize-plugin';
 import { useTensorflowModel } from 'react-native-fast-tflite';
-import { useRunOnJS } from 'react-native-worklets-core';
+import { useRunOnJS, useSharedValue } from 'react-native-worklets-core';
 
 import { generateAnchors, decodeFaces, DEFAULT_DECODE_OPTIONS } from '../ai/blazeface';
 import { enhanceForDetection, DEFAULT_ENHANCE_OPTIONS } from '../ai/preprocessing';
@@ -16,7 +16,6 @@ import {
 import {
   decodeEmbedding,
   averageEmbeddings,
-  embeddingToBuffer,
   DEFAULT_EMBEDDING_CONFIG,
   type Embedding,
 } from '../ai/embedding';
@@ -25,7 +24,7 @@ import { DETECTOR_INPUT_SIZE, EMBEDDING_DIM } from '../utils/constants';
 
 /** How many frames to average into one enrollment embedding. */
 const ENROLLMENT_FRAMES = 7;
-/** Dev-only placeholder encryption key — Phase 5 replaces with Keystore secret. */
+/** Dev-only placeholder encryption key — swap for Keystore secret in production. */
 const DEV_KEY = 'dev-placeholder-key-phase5-will-rotate';
 /** Embedding model version tag stored alongside each enrollment row. */
 const MODEL_VERSION = 'mobilefacenet-int8-v1';
@@ -37,9 +36,7 @@ export interface UseEnrollment {
   phase: EnrollmentPhase;
   captured: number;
   total: number;
-  /** Start a new enrollment session for the given person. */
   start: (personId: string, displayName: string) => void;
-  /** Abort and reset. */
   reset: () => void;
   error: string | null;
 }
@@ -49,27 +46,51 @@ interface Session {
   displayName: string;
 }
 
+/**
+ * FIX (Phase 7): TensorflowModel (Nitro HybridObject) must NOT appear in
+ * useFrameProcessor deps — see useFaceDetector for the full explanation.
+ * All three models are stored in useSharedValue and read inside the worklet.
+ */
 export function useEnrollment(): UseEnrollment {
   const detector = useTensorflowModel(require('../../models/blazeface.tflite'), []);
-  const mesh = useTensorflowModel(require('../../models/face_landmark.tflite'), []);
+  const mesh     = useTensorflowModel(require('../../models/face_landmark.tflite'), []);
   const embedder = useTensorflowModel(require('../../models/mobilefacenet.tflite'), []);
 
-  const detModel = detector.state === 'loaded' ? detector.model : undefined;
-  const meshModel = mesh.state === 'loaded' ? mesh.model : undefined;
-  const embedModel = embedder.state === 'loaded' ? embedder.model : undefined;
+  // ─── SharedValues: models stored here, NEVER in useFrameProcessor deps ──────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const detModelSV   = useSharedValue<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meshModelSV  = useSharedValue<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const embedModelSV = useSharedValue<any>(null);
+
+  useEffect(() => {
+    detModelSV.value = detector.state === 'loaded' ? (detector.model ?? null) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detector.state, detector.model]);
+
+  useEffect(() => {
+    meshModelSV.value = mesh.state === 'loaded' ? (mesh.model ?? null) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesh.state, mesh.model]);
+
+  useEffect(() => {
+    embedModelSV.value = embedder.state === 'loaded' ? (embedder.model ?? null) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedder.state, embedder.model]);
 
   const anchors = generateAnchors();
   const { resize } = useResizePlugin();
 
-  const sessionRef = useRef<Session | null>(null);
+  const sessionRef    = useRef<Session | null>(null);
   const embeddingsRef = useRef<Embedding[]>([]);
 
-  const [phase, setPhase] = useState<EnrollmentPhase>('idle');
+  const [phase,    setPhase]    = useState<EnrollmentPhase>('idle');
   const [captured, setCaptured] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error,    setError]    = useState<string | null>(null);
 
   const reset = useCallback(() => {
-    sessionRef.current = null;
+    sessionRef.current    = null;
     embeddingsRef.current = [];
     setPhase('idle');
     setCaptured(0);
@@ -78,13 +99,12 @@ export function useEnrollment(): UseEnrollment {
 
   const start = useCallback((personId: string, displayName: string) => {
     embeddingsRef.current = [];
-    sessionRef.current = { personId, displayName };
+    sessionRef.current    = { personId, displayName };
     setPhase('capturing');
     setCaptured(0);
     setError(null);
   }, []);
 
-  /** Called on JS thread when we have a new embedding from the worklet. */
   const onEmbedding = useRunOnJS((embedding: number[]) => {
     const session = sessionRef.current;
     if (!session) return;
@@ -96,7 +116,6 @@ export function useEnrollment(): UseEnrollment {
 
     if (count < ENROLLMENT_FRAMES) return;
 
-    // Enough frames collected — average, store, done.
     setPhase('saving');
     try {
       const avgEmbedding = averageEmbeddings(embeddingsRef.current);
@@ -108,7 +127,7 @@ export function useEnrollment(): UseEnrollment {
         embedding: avgEmbedding,
         modelVersion: MODEL_VERSION,
       });
-      sessionRef.current = null;
+      sessionRef.current    = null;
       embeddingsRef.current = [];
       setPhase('done');
     } catch (e) {
@@ -125,7 +144,11 @@ export function useEnrollment(): UseEnrollment {
 
       runAtTargetFps(6, () => {
         'worklet';
-        if (detModel == null || meshModel == null || embedModel == null) return;
+        // Read models from SharedValues.
+        const dm = detModelSV.value;
+        const mm = meshModelSV.value;
+        const em = embedModelSV.value;
+        if (dm == null || mm == null || em == null) return;
 
         // 1. Detect face.
         const size = DETECTOR_INPUT_SIZE;
@@ -137,31 +160,31 @@ export function useEnrollment(): UseEnrollment {
         const enhanced = enhanceForDetection(small, size, size, DEFAULT_ENHANCE_OPTIONS);
         const detInput = new Float32Array(enhanced.length);
         for (let i = 0; i < enhanced.length; i++) detInput[i] = enhanced[i] / 127.5 - 1;
-        const detOut = detModel.runSync([detInput.buffer as ArrayBuffer]);
+        const detOut = dm.runSync([detInput.buffer]);
         if (detOut.length < 2) return;
 
         const a = new Float32Array(detOut[0]);
         const b = new Float32Array(detOut[1]);
-        const reg = a.length >= b.length ? a : b;
-        const sc = a.length >= b.length ? b : a;
+        const reg   = a.length >= b.length ? a : b;
+        const sc    = a.length >= b.length ? b : a;
         const faces = decodeFaces(reg, sc, anchors, DEFAULT_DECODE_OPTIONS);
         if (faces.length === 0) return;
         const face = faces[0];
 
         // 2. Run Face Mesh to get 5 alignment landmarks.
         const meshCrop = {
-          x: Math.round(face.bbox.x * frame.width),
-          y: Math.round(face.bbox.y * frame.height),
-          width: Math.round(face.bbox.width * frame.width),
+          x:      Math.round(face.bbox.x      * frame.width),
+          y:      Math.round(face.bbox.y      * frame.height),
+          width:  Math.round(face.bbox.width  * frame.width),
           height: Math.round(face.bbox.height * frame.height),
         };
         const meshIn = resize(frame, {
-          crop: meshCrop,
+          crop:  meshCrop,
           scale: { width: FACEMESH_INPUT_SIZE, height: FACEMESH_INPUT_SIZE },
           pixelFormat: 'rgb',
           dataType: 'float32',
         });
-        const meshOut = meshModel.runSync([meshIn.buffer as ArrayBuffer]);
+        const meshOut = mm.runSync([meshIn.buffer]);
         let lmBuf = meshOut[0];
         for (let i = 1; i < meshOut.length; i++) {
           if (meshOut[i].byteLength > lmBuf.byteLength) lmBuf = meshOut[i];
@@ -176,10 +199,9 @@ export function useEnrollment(): UseEnrollment {
         }));
         const crop = alignedCropParams(pixPts5, frame.width, frame.height);
 
-        // 4. Crop + resize to MobileFaceNet input (112x112), normalise to
-        //    [-1,1] exactly as the model expects: (px - 128) / 128.
+        // 4. Crop + resize to 112×112, normalise: (px - 128) / 128.
         const embedSmall = resize(frame, {
-          crop: { x: crop.x, y: crop.y, width: crop.width, height: crop.height },
+          crop:  { x: crop.x, y: crop.y, width: crop.width, height: crop.height },
           scale: { width: MOBILEFACENET_INPUT_SIZE, height: MOBILEFACENET_INPUT_SIZE },
           pixelFormat: 'rgb',
           dataType: 'uint8',
@@ -188,17 +210,17 @@ export function useEnrollment(): UseEnrollment {
         for (let i = 0; i < embedSmall.length; i++) embedInput[i] = (embedSmall[i] - 128) / 128;
 
         // 5. Run embedding model.
-        const embedOut = embedModel.runSync([embedInput.buffer]);
+        const embedOut  = em.runSync([embedInput.buffer]);
         const embedding = decodeEmbedding(embedOut[0], {
           ...DEFAULT_EMBEDDING_CONFIG,
           dim: EMBEDDING_DIM,
         });
 
-        // Pass back to JS thread as a plain number[] (worklet-serialisable).
         onEmbedding(Array.from(embedding));
       });
     },
-    [detModel, meshModel, embedModel, anchors, resize, onEmbedding],
+    // Only stable values in deps — SharedValue references never change.
+    [detModelSV, meshModelSV, embedModelSV, anchors, resize, onEmbedding],
   );
 
   return {

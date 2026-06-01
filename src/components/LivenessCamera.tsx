@@ -4,7 +4,7 @@ import { Camera, useCameraDevice } from 'react-native-vision-camera';
 import { useIsFocused } from '@react-navigation/native';
 
 import { useCameraAccess, useLiveness } from '../hooks';
-import { DEFAULT_LIVENESS_CONFIG } from '../liveness';
+import { DEMO_LIVENESS_CONFIG } from '../liveness';
 import { LivenessOverlay } from './LivenessOverlay';
 import { Paragraph } from './Paragraph';
 import { PrimaryButton } from './PrimaryButton';
@@ -18,7 +18,9 @@ export function LivenessCamera(): React.JSX.Element {
   const { hasPermission, request, status } = useCameraAccess();
   const device = useCameraDevice('front');
   const isFocused = useIsFocused();
-  const { frameProcessor, liveness, prompt, reset, models } = useLiveness();
+  // DEMO_LIVENESS_CONFIG skips the passive anti-spoof gate (MiniFASNet placeholder).
+  // Switch to DEFAULT_LIVENESS_CONFIG once the real model is converted.
+  const { frameProcessor, liveness, prompt, reset, models } = useLiveness(DEMO_LIVENESS_CONFIG);
 
   if (!hasPermission) {
     return (
@@ -51,7 +53,7 @@ export function LivenessCamera(): React.JSX.Element {
         liveness={liveness}
         prompt={prompt}
         antiSpoofState={models.antiSpoof}
-        timeoutMs={DEFAULT_LIVENESS_CONFIG.challengeTimeoutMs}
+        timeoutMs={DEMO_LIVENESS_CONFIG.challengeTimeoutMs}
       />
       {terminal ? (
         <View style={styles.footer}>

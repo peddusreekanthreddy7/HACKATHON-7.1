@@ -29,6 +29,23 @@ export interface LivenessConfig {
   pitchScale: number;
 }
 
+/**
+ * Demo config: skips the passive anti-spoof gate so the challenges + recognition
+ * work before the real MiniFASNet model is converted.
+ * Use this in LivenessCamera/AttendanceScreen while minifasnet.tflite is still a
+ * placeholder. Switch back to DEFAULT_LIVENESS_CONFIG once the model is real.
+ */
+export const DEMO_LIVENESS_CONFIG: LivenessConfig = {
+  ear:   { closed: 0.18, open: 0.28 },
+  smile: { ratioThreshold: 0.6, holdMs: 350 },
+  yaw:   { turnDegrees: 20, invert: false },
+  antiSpoof: { required: false, requiredFrames: 5, realThreshold: 0.6, realClassIndex: 1 },
+  challengeTimeoutMs: 7000,
+  challengeCount: 2,
+  yawScale:   90,
+  pitchScale: 90,
+};
+
 export const DEFAULT_LIVENESS_CONFIG: LivenessConfig = {
   ear: { closed: 0.18, open: 0.28 },
   smile: { ratioThreshold: 0.6, holdMs: 350 },

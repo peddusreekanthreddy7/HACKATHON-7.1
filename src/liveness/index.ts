@@ -1,4 +1,4 @@
-export { DEFAULT_LIVENESS_CONFIG, type LivenessConfig } from './config';
+export { DEFAULT_LIVENESS_CONFIG, DEMO_LIVENESS_CONFIG, type LivenessConfig } from './config';
 export {
   pickChallenges,
   initLiveness,
