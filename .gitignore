@@ -76,8 +76,9 @@ android/app/src/main/assets/
 android/app/src/main/res/drawable-*/
 android/app/src/main/res/raw/
 
-# Python ML eval — cache + regenerable datasets/pairs (scripts are tracked, data is not)
-ml/__pycache__/
+# Python — bytecode cache anywhere + regenerable datasets/pairs (scripts tracked, data not)
+**/__pycache__/
+**/*.pyc
 ml/dataset/
 ml/dataset_bollywood/
 ml/pairs*.txt
