@@ -3,6 +3,10 @@
 [![iOS Build](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions/workflows/ios-build.yml/badge.svg)](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions/workflows/ios-build.yml)
 &nbsp; **Android: verified on device** &nbsp;·&nbsp; **56 tests** &nbsp;·&nbsp; **tsc 0 errors** &nbsp;·&nbsp; **100% open-source**
 
+## 📲 Try it now — install the working app (no build needed)
+
+**[⬇️ Download the FaceAuth Android APK](https://drive.google.com/file/d/1D1_aZa0OtnO3WXjK7u3aJQSOe8dDz2fO/view?usp=drivesdk)** — a signed, **fully offline** standalone build (Android 8.0+). Install on any phone and run it immediately: enrol a face → liveness challenges → recognition. **No setup, no internet, no laptop required.** *(The exact same APK is also built reproducibly in [GitHub Actions](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions/workflows/android-apk.yml).)*
+
 Fully **offline, on-device** facial recognition + liveness detection for
 field-personnel attendance in **zero-network remote areas**. React Native
 (TypeScript), Android **8.0+** and iOS **15.1+**.
