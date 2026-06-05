@@ -21,6 +21,25 @@ export function insertEnrollment(
      VALUES (?, ?, ?, ?, ?, ?)`,
     [row.id, row.personId, row.displayName, blob, row.modelVersion, Date.now()],
   );
+
+  // Diagnostic: read the row straight back and report the stored norm. This
+  // isolates a write/read corruption (norm 0 here) from a bad input embedding.
+  try {
+    const back = db.executeSync('SELECT embedding FROM enrollments WHERE id = ?', [row.id]);
+    const storedBlob = back.rows[0]?.embedding as Uint8Array | ArrayBuffer | undefined;
+    if (storedBlob) {
+      const e = bufferToEmbedding(storedBlob);
+      let n = 0;
+      for (let i = 0; i < e.length; i++) n += e[i] * e[i];
+      console.log(
+        `[Enroll] READBACK blobBytes=${(storedBlob as ArrayBuffer).byteLength ?? '?'} len=${e.length} norm=${Math.sqrt(n).toFixed(4)}`,
+      );
+    } else {
+      console.log('[Enroll] READBACK no row found!');
+    }
+  } catch (err) {
+    console.log('[Enroll] READBACK error', String(err));
+  }
 }
 
 export function getAllEnrollments(db: DB): EnrollmentRow[] {

@@ -9,5 +9,7 @@ That downloads the Apache-2.0 weights and writes a real models/minifasnet.tflite
 (80x80 input, 3-class output) over this placeholder.
 
 Until then, react-native-fast-tflite fails to parse this file, the anti-spoof
-model state is 'error', and liveness FAILS CLOSED (it never passes the passive
-gate) — which is the correct, secure default.
+model state is 'error', and liveness GRACEFULLY DEGRADES: the passive gate is
+skipped and the ACTIVE challenges (blink/smile/turn) run on their own. Auth is
+NOT blocked — the active challenge-response is itself strong liveness. Once the
+real model is converted, the passive texture gate rejects photo/screen spoofs again.

@@ -35,5 +35,5 @@ export function useCameraAccess(): CameraAccess {
     return granted;
   }, [requestPermission]);
 
-  return { status, hasPermission, request };
+  return { status, hasPermission: status === 'granted', request };
 }

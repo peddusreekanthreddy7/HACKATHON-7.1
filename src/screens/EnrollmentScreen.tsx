@@ -125,7 +125,7 @@ export function EnrollmentScreen(): React.JSX.Element {
             <PrimaryButton
               label="Start enrollment"
               onPress={onStartEnrollment}
-              disabled={!hasPermission || !personId.trim() || !displayName.trim()}
+              disabled={!personId.trim() || !displayName.trim()}
             />
           </Section>
         )}

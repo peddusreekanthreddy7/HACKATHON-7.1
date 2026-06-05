@@ -6,8 +6,13 @@ import type { Embedding, MatchResult, EmbeddingConfig } from './types';
  * reduces to a plain dot product — fast and numerically stable.
  */
 
-/** Cosine similarity of two L2-normalised float32 vectors. Range: [−1, 1]. */
-export function cosineSimilarity(a: Embedding, b: Embedding): number {
+/**
+ * Cosine similarity of two L2-normalised vectors. Range: [−1, 1].
+ * Accepts ArrayLike so a worklet can compare a Float32Array query against a
+ * plain number[] gallery embedding (gallery vectors MUST be number[] — a
+ * Float32Array's bytes do not survive capture into a worklets-core worklet).
+ */
+export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
   'worklet';
   let dot = 0;
   const len = Math.min(a.length, b.length);
@@ -18,7 +23,8 @@ export function cosineSimilarity(a: Embedding, b: Embedding): number {
 export interface EnrolledRecord {
   personId: string;
   displayName: string;
-  embedding: Embedding;
+  /** Plain number[] so it survives the JS→worklet boundary intact. */
+  embedding: ArrayLike<number>;
 }
 
 /**

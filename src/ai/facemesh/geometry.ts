@@ -69,13 +69,17 @@ export function smileRatio(lm: FaceLandmarks): number {
  */
 export function headYawNorm(lm: FaceLandmarks): number {
   'worklet';
-  const L = lm[POSE.leftEyeOuter];
-  const R = lm[POSE.rightEyeOuter];
-  const N = lm[POSE.noseTip];
-  const eyeWidth = R.x - L.x;
-  if (eyeWidth === 0) return 0;
-  const midX = (L.x + R.x) / 2;
-  return (N.x - midX) / Math.abs(eyeWidth);
+  // Glasses compensation (Fix C): derive yaw from the nose-tip (1) → chin (152)
+  // axis ONLY. Eye-corner landmarks (33/263) sit under glasses frames and get
+  // distorted, so they are deliberately NOT used here. When the head yaws, the
+  // forward-protruding nose tip shifts horizontally relative to the chin (which
+  // lies near the rotation axis); that signed offset, normalised by the
+  // nose→chin vertical span for scale-invariance, is the yaw proxy.
+  const N = lm[POSE.noseTip]; // landmark 1
+  const C = lm[POSE.chin];    // landmark 152
+  const faceHeight = Math.abs(C.y - N.y);
+  if (faceHeight === 0) return 0;
+  return (N.x - C.x) / faceHeight;
 }
 
 /** Signed, normalized pitch proxy from nose height relative to the eye line. */

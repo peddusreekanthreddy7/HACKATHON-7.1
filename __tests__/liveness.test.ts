@@ -46,13 +46,16 @@ describe('passive anti-spoof gate', () => {
     expect(s.reason).toBe('spoof-detected');
   });
 
-  it('fails closed (waits) when the model is unavailable', () => {
+  it('degrades gracefully (skips passive, runs active) when the model is unavailable', () => {
+    // Passive model failed to load / no verdict (null) → do NOT block.
+    // Skip the passive gate and start the active challenges immediately.
     const s = advanceLiveness(
       initLiveness(['blink', 'smile']),
       frame({ antiSpoofReal: null }),
       cfg,
     );
-    expect(s.phase).toBe('antispoof');
+    expect(s.phase).toBe('running');
+    expect(s.challenges[0].status).toBe('active');
   });
 
   it('opens the first challenge only after enough real frames', () => {

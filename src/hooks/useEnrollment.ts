@@ -20,7 +20,7 @@ import {
   DEFAULT_EMBEDDING_CONFIG,
   type Embedding,
 } from '../ai/embedding';
-import { getDb, insertEnrollment } from '../db';
+import { getDb, insertEnrollment, countEnrollments } from '../db';
 import { DETECTOR_INPUT_SIZE, EMBEDDING_DIM } from '../utils/constants';
 
 /** How many frames to average into one enrollment embedding. */
@@ -85,11 +85,19 @@ export function useEnrollment(): UseEnrollment {
   }, []);
 
   /** Called on JS thread when we have a new embedding from the worklet. */
-  const onEmbedding = useRunOnJS((embedding: number[]) => {
+  const onEmbedding = useRunOnJS((embedding: number[], workletNorm: number) => {
     const session = sessionRef.current;
     if (!session) return;
 
     const vec = new Float32Array(embedding);
+    let n = 0;
+    for (let i = 0; i < vec.length; i++) n += vec[i] * vec[i];
+    // workletNorm = norm computed INSIDE the worklet (before the bridge).
+    // jsNorm = norm AFTER crossing the worklet→JS bridge.
+    // If workletNorm≈1 but jsNorm≈0, the bridge serialisation dropped the data.
+    console.log(
+      `[Enroll] frame len=${vec.length} workletNorm=${workletNorm.toFixed(4)} jsNorm=${Math.sqrt(n).toFixed(4)}`,
+    );
     embeddingsRef.current.push(vec);
     const count = embeddingsRef.current.length;
     setCaptured(count);
@@ -100,6 +108,11 @@ export function useEnrollment(): UseEnrollment {
     setPhase('saving');
     try {
       const avgEmbedding = averageEmbeddings(embeddingsRef.current);
+      let an = 0;
+      for (let i = 0; i < avgEmbedding.length; i++) an += avgEmbedding[i] * avgEmbedding[i];
+      console.log(
+        `[Enroll] AVG len=${avgEmbedding.length} norm=${Math.sqrt(an).toFixed(4)} — storing now`,
+      );
       const db = getDb(DEV_KEY);
       insertEnrollment(db, {
         id: `${session.personId}-${Date.now()}`,
@@ -108,6 +121,10 @@ export function useEnrollment(): UseEnrollment {
         embedding: avgEmbedding,
         modelVersion: MODEL_VERSION,
       });
+      // Fix E — registration verification logging.
+      console.log('✅ Face saved:', session.personId);
+      console.log('📐 Embedding size:', avgEmbedding.length);
+      console.log('💾 DB row count:', countEnrollments(db));
       sessionRef.current = null;
       embeddingsRef.current = [];
       setPhase('done');
@@ -195,7 +212,18 @@ export function useEnrollment(): UseEnrollment {
         });
 
         // Pass back to JS thread as a plain number[] (worklet-serialisable).
-        onEmbedding(Array.from(embedding));
+        // IMPORTANT: build the array with an explicit loop. `Array.from()` is
+        // NOT reliable inside react-native-worklets-core — it can yield an
+        // empty/zero array, which is exactly how an all-zero embedding gets
+        // stored (g0Norm=0 → "No match · 0%"). Also compute the norm here, in
+        // the worklet, so we can prove the embedding was good pre-bridge.
+        const out = [];
+        let wn = 0;
+        for (let i = 0; i < embedding.length; i++) {
+          out.push(embedding[i]);
+          wn += embedding[i] * embedding[i];
+        }
+        onEmbedding(out, Math.sqrt(wn));
       });
     },
     [detModel, meshModel, embedModel, anchors, resize, onEmbedding],

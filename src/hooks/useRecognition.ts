@@ -100,21 +100,40 @@ export function useRecognition(): UseRecognition {
   }, [reset]);
 
   const onRecognitionResult = useRunOnJS(
-    (stamps: LatencyStamps, matchJson: string) => {
+    (stamps: LatencyStamps, matchJson: string, diagJson: string) => {
       const breakdown = calcLatency(stamps);
       stats.current.push(breakdown.totalMs);
 
       // Log to console for PERFORMANCE_BENCHMARKS.md (MEASURE ON DEVICE).
       console.log('[Latency]', JSON.stringify(breakdown));
       console.log('[Benchmark row]\n' + formatBenchmarkRow(breakdown));
+      // Diagnostic: if score is 0%, this shows WHICH vector is the problem.
+      //   qNorm ≈ 0  → live query embedding is bad (decode / crop / model)
+      //   g0Norm ≈ 0 → stored gallery embedding is bad → RE-ENROLL needed
+      console.log('[Recog diag]', diagJson);
 
       const match: MatchResult | null = JSON.parse(matchJson);
+      const diag = JSON.parse(diagJson);
+      const threshold = DEFAULT_EMBEDDING_CONFIG.matchThreshold;
+      const matched = !!(match && match.accepted);
+
+      // Fix F — authentication match logging.
+      console.log('🔍 Searching DB for match...');
+      console.log('📊 Embeddings found in DB:', diag.gCount);
+      console.log('📈 Best similarity score:', match ? match.score : null);
+      console.log('🎯 Threshold:', threshold);
+      console.log('✅ Result:', matched ? 'MATCH' : 'NO MATCH');
+
+      // Log the raw cosine score + accept decision so false-accepts (a DIFFERENT
+      // person scoring above threshold) are measurable on device.
+      console.log('[Recog match]', matchJson, 'threshold=' + threshold);
+
       if (!match) {
         setPhase('no-match');
         setResult({ match: null, confidence: null, latencyMs: breakdown.totalMs });
         return;
       }
-      const confidence = scoreToConfidence(match.score, DEFAULT_EMBEDDING_CONFIG.matchThreshold);
+      const confidence = scoreToConfidence(match.score, threshold);
       setPhase('done');
       setResult({ match, confidence, latencyMs: breakdown.totalMs });
     },
@@ -212,9 +231,24 @@ export function useRecognition(): UseRecognition {
         });
         stamps.matchDone = Date.now();
 
+        // Diagnostic: norms of the query and the first gallery embedding.
+        let qn = 0;
+        for (let i = 0; i < queryEmbedding.length; i++) qn += queryEmbedding[i] * queryEmbedding[i];
+        const g0 = gallery.length > 0 ? gallery[0].embedding : null;
+        let gn = 0;
+        if (g0) for (let i = 0; i < g0.length; i++) gn += g0[i] * g0[i];
+        const diag = {
+          qLen: queryEmbedding.length,
+          qNorm: Math.sqrt(qn),
+          gCount: gallery.length,
+          g0Len: g0 ? g0.length : 0,
+          g0Norm: Math.sqrt(gn),
+        };
+
         onRecognitionResult(
           stamps as LatencyStamps,
           JSON.stringify(match),
+          JSON.stringify(diag),
         );
       });
     },
@@ -240,7 +274,11 @@ export function refreshGallery(): void {
     galleryRef = rows.map(r => ({
       personId: r.personId,
       displayName: r.displayName,
-      embedding: r.embedding,
+      // CRITICAL: convert Float32Array → plain number[]. A Float32Array's
+      // backing buffer does NOT cross into a worklets-core worklet (the bytes
+      // arrive as zeros → g0Norm=0 → "No match · 0%"). A plain number[] is
+      // serialised by value and survives intact.
+      embedding: Array.from(r.embedding),
     }));
   } catch {
     galleryRef = [];

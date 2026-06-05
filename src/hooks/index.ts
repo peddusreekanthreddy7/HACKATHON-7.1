@@ -15,3 +15,8 @@ export {
   type RecognitionPhase,
   type RecognitionResult,
 } from './useRecognition';
+export {
+  useDebugRecognition,
+  type UseDebugRecognition,
+  type DebugRecResult,
+} from './useDebugRecognition';

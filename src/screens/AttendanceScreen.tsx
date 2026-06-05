@@ -5,7 +5,7 @@ import { useIsFocused } from '@react-navigation/native';
 
 import { useCameraAccess, useLiveness, useRecognition, refreshGallery } from '../hooks';
 import { LivenessOverlay } from '../components';
-import { DEFAULT_LIVENESS_CONFIG } from '../liveness';
+import { DEMO_LIVENESS_CONFIG } from '../liveness';
 import { palette } from '../navigation/theme';
 import { PrimaryButton } from '../components';
 import { getDb, recordAttendance } from '../db';
@@ -23,7 +23,7 @@ export function AttendanceScreen(): React.JSX.Element {
   const isFocused = useIsFocused();
 
   const { frameProcessor: livenessProcessor, liveness, prompt, reset: resetLiveness, models } =
-    useLiveness();
+    useLiveness(DEMO_LIVENESS_CONFIG);
   const { frameProcessor: recProcessor, phase: recPhase, result, onLivenessUpdate, reset: resetRec } =
     useRecognition();
 
@@ -82,12 +82,21 @@ export function AttendanceScreen(): React.JSX.Element {
   // Choose the active frame processor: recognition fires once after liveness passes.
   const activeProcessor = showRec && recPhase === 'running' ? recProcessor : livenessProcessor;
 
+  // Keep the camera ON until recognition has actually produced a result.
+  // BUG FIX: previously `isActive={isFocused && !terminal}` switched the camera
+  // off the moment liveness passed — but recognition still needs a live frame.
+  // That race made verification "stick" on Identifying… whenever the camera
+  // stopped before the one recognition frame fired.
+  const recDone = recPhase === 'done' || recPhase === 'no-match' || recPhase === 'error';
+  const cameraActive =
+    isFocused && liveness.phase !== 'failed' && !recDone;
+
   return (
     <View style={styles.fill}>
       <Camera
         style={StyleSheet.absoluteFill}
         device={device}
-        isActive={isFocused && !terminal}
+        isActive={cameraActive}
         frameProcessor={activeProcessor}
       />
 
@@ -95,7 +104,7 @@ export function AttendanceScreen(): React.JSX.Element {
         liveness={liveness}
         prompt={prompt}
         antiSpoofState={models.antiSpoof}
-        timeoutMs={DEFAULT_LIVENESS_CONFIG.challengeTimeoutMs}
+        timeoutMs={DEMO_LIVENESS_CONFIG.challengeTimeoutMs}
       />
 
       {/* Recognition result overlay */}

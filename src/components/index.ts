@@ -7,3 +7,4 @@ export { CameraOverlay } from './CameraOverlay';
 export { FaceCamera } from './FaceCamera';
 export { LivenessOverlay } from './LivenessOverlay';
 export { LivenessCamera } from './LivenessCamera';
+export { DebugSlider } from './DebugSlider';

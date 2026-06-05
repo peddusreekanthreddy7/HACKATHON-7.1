@@ -1,0 +1,50 @@
+name: iOS Build (compile check)
+
+# Proves the iOS target COMPILES on a real macOS toolchain without anyone
+# owning a Mac. Builds for the iOS Simulator with code signing disabled, so no
+# Apple developer account / certificates are needed. A green run = evidence the
+# cross-platform React Native app builds for iOS 15.1+.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  ios-compile:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install JS dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: CocoaPods install
+        working-directory: ios
+        run: |
+          pod repo update
+          pod install
+
+      - name: Xcodebuild (iOS Simulator, no signing)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace DatalakeFaceAuth.xcworkspace \
+            -scheme DatalakeFaceAuth \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build

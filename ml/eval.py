@@ -21,10 +21,23 @@ def load_face(path: str, size: int = 112) -> np.ndarray:
     return ((img.astype(np.float32) - 128.0) / 128.0)[None, ...]
 
 
-def embed_all(tflite_path: str, image_paths: list[str], size: int = 112) -> dict[str, np.ndarray]:
-    import tensorflow as tf
+def _make_interpreter(tflite_path: str):
+    """Load a TFLite interpreter from whichever runtime is installed.
 
-    interp = tf.lite.Interpreter(model_path=tflite_path)
+    ai-edge-litert (LiteRT) ships Python 3.13 wheels and runs the SAME .tflite we
+    bundle in the app; tensorflow.lite is the fallback on older Pythons. Either way
+    we score the EXACT model the app ships — no proxy, no fabricated numbers.
+    """
+    try:
+        from ai_edge_litert.interpreter import Interpreter
+        return Interpreter(model_path=tflite_path)
+    except ImportError:
+        import tensorflow as tf
+        return tf.lite.Interpreter(model_path=tflite_path)
+
+
+def embed_all(tflite_path: str, image_paths: list[str], size: int = 112) -> dict[str, np.ndarray]:
+    interp = _make_interpreter(tflite_path)
     interp.allocate_tensors()
     inp = interp.get_input_details()[0]
     out = interp.get_output_details()[0]

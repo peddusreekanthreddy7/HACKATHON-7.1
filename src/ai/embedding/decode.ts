@@ -39,29 +39,48 @@ export function decodeEmbedding(
   config: EmbeddingConfig,
 ): Embedding {
   'worklet';
-  // fast-tflite v2 returns TypedArray views; v3 returned ArrayBuffer. Accept both.
+  // fast-tflite v2 hands back a real TypedArray whose element type tells us how
+  // to read it — trust that directly and DO NOT silently fall back to a zero
+  // vector on a size quirk. A phantom all-zero embedding scores 0% against
+  // everything (and, since enroll + verify share this code, poisons the gallery
+  // too), which surfaced as "No match · 0% confidence".
+  if (raw instanceof Float32Array) {
+    // FP32 model output — use every element regardless of the declared dim.
+    return l2Normalize(new Float32Array(raw));
+  }
+  if (raw instanceof Int8Array) {
+    return l2Normalize(
+      dequantiseInt8(raw, config.int8.scale, config.int8.zeroPoint),
+    );
+  }
+  if (raw instanceof Uint8Array) {
+    // Most delegates that hand back bytes are really float32 buffers.
+    const ab = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+    if (raw.byteLength % 4 === 0) return l2Normalize(new Float32Array(ab));
+    return l2Normalize(
+      dequantiseInt8(new Int8Array(ab), config.int8.scale, config.int8.zeroPoint),
+    );
+  }
+
+  // Legacy ArrayBuffer path (fast-tflite v3 returned these).
   const rawBuf: ArrayBuffer = ArrayBuffer.isView(raw)
     ? (raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)
     : raw;
   const byteLen = rawBuf.byteLength;
-  let vec: Float32Array;
 
   if (byteLen === config.dim) {
     // INT8: 1 byte per value.
-    vec = dequantiseInt8(
-      new Int8Array(rawBuf),
-      config.int8.scale,
-      config.int8.zeroPoint,
+    return l2Normalize(
+      dequantiseInt8(new Int8Array(rawBuf), config.int8.scale, config.int8.zeroPoint),
     );
-  } else if (byteLen === config.dim * 4) {
-    // float32: 4 bytes per value.
-    vec = new Float32Array(rawBuf.slice(0));
-  } else {
-    // Unknown size: return a zero vector (caller can detect via norm === 0).
-    vec = new Float32Array(config.dim);
   }
-
-  return l2Normalize(vec);
+  if (byteLen % 4 === 0) {
+    // Any float32 buffer (192-D = 768 bytes is the expected case).
+    return l2Normalize(new Float32Array(rawBuf.slice(0)));
+  }
+  // Genuinely unreadable — make it loud rather than silently returning zeros.
+  console.warn('[decodeEmbedding] unexpected output byteLength=' + byteLen);
+  return l2Normalize(new Float32Array(config.dim));
 }
 
 /** Average N embeddings and re-normalise (for multi-frame enrollment). */

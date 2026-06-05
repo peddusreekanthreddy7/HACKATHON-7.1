@@ -28,5 +28,5 @@ export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   // These quantization params are model-specific; calibrate from the real model.
   // For InsightFace/ArcFace INT8, typical scale ≈ 0.0078, zeroPoint ≈ 0.
   int8: { scale: 0.0078125, zeroPoint: 0 },
-  matchThreshold: 0.6,
+  matchThreshold: 0.4, // 0.40 — lowered from 0.6 to cut false "no match" (Fix A)
 };

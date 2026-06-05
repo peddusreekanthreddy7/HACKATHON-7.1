@@ -94,7 +94,13 @@ NetInfo online → getUnsynced() → POST /attendance (Idempotency-Key)
 
 ## 4. Liveness logic
 
-**Fusion rule:** liveness passes **iff** `passive_real AND active[0] AND active[1]`.
+**Fusion rule:** liveness passes **iff** `(passive_real OR passive_unavailable) AND active[0] AND active[1]`.
+The passive gate is enforced *only when the MiniFASNet model is present and returns
+a verdict*: a loaded model that says "fake" rejects; an **unavailable** model (the
+shipped placeholder, or a load error) is **skipped** and the active challenges run on
+their own (graceful degradation — auth is never blocked by a missing passive model).
+So the shipped build (placeholder model) currently runs **active-only**; converting
+the real MiniFASNet (`scripts/convert_minifasnet.py`) re-enables true passive+active fusion.
 
 ### Passive (texture) — MiniFASNet
 Runs *before* any challenge. Scores the face crop for live-skin texture vs the

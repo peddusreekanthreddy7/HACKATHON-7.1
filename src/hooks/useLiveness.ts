@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrameProcessor, runAtTargetFps } from 'react-native-vision-camera';
 import { useResizePlugin } from 'vision-camera-resize-plugin';
 import { useTensorflowModel } from 'react-native-fast-tflite';
@@ -43,6 +43,8 @@ interface Metrics {
   smileRatio: number;
   yawDeg: number;
   antiSpoofReal: boolean | null;
+  /** Passive MiniFASNet real-class score; defaults to 0.8 when unavailable (Fix D). */
+  passiveLivenessScore: number;
 }
 
 type ModelPhase = 'loading' | 'loaded' | 'error';
@@ -64,8 +66,9 @@ export interface UseLiveness {
  *        → metrics → JS thread → liveness FSM (gate + challenges)
  *
  * Heavy work is throttled and the FSM lives on the JS thread (the worklet only
- * measures). The passive model gates the challenges, so liveness passes only
- * when passive AND active both succeed.
+ * measures). When present, the passive model gates the challenges (passive AND
+ * active must both succeed); when it's unavailable (placeholder / load error) the
+ * passive gate is skipped and the active challenges carry liveness on their own.
  */
 export function useLiveness(
   config: LivenessConfig = DEFAULT_LIVENESS_CONFIG,
@@ -74,7 +77,9 @@ export function useLiveness(
   const mesh = useTensorflowModel(require('../../models/face_landmark.tflite'));
   // Placeholder until `python scripts/convert_minifasnet.py` is run — then this
   // loads for real. Until then its state is 'error' → passive verdict is null
-  // → the FSM fails closed (never clears the gate). Correct, secure default.
+  // → the FSM SKIPS the passive gate and runs the ACTIVE challenges only
+  // (graceful degradation, Fix D). Auth is NOT blocked; the active
+  // challenges (blink/smile/turn) remain a strong liveness signal on their own.
   const antiSpoof = useTensorflowModel(require('../../models/minifasnet.tflite'));
 
   const detModel = detector.state === 'loaded' ? detector.model : undefined;
@@ -96,9 +101,35 @@ export function useLiveness(
     setLiveness(next);
   }, [config.challengeCount]);
 
+  // Fix D — MiniFASNet fallback. If the passive model fails to load, log ONCE
+  // and fall back to ACTIVE-only liveness: the FSM treats a null verdict as
+  // "skip passive", so authentication is never blocked by a missing model.
+  const spoofUnavailableLogged = useRef(false);
+  useEffect(() => {
+    if (antiSpoof.state === 'error' && !spoofUnavailableLogged.current) {
+      spoofUnavailableLogged.current = true;
+      console.log('MiniFASNet unavailable - using active only');
+    }
+  }, [antiSpoof.state]);
+
   // Worklet → JS: stamp time here, advance the FSM, push UI state.
   const onMetrics = useRunOnJS((m: Metrics) => {
-    const frame: LivenessFrame = { now: Date.now(), ...m };
+    const frame: LivenessFrame = {
+      now: Date.now(),
+      facePresent: m.facePresent,
+      ear: m.ear,
+      smileRatio: m.smileRatio,
+      yawDeg: m.yawDeg,
+      antiSpoofReal: m.antiSpoofReal,
+    };
+    // Diagnostic: print the live signals during an active challenge so the
+    // EAR/yaw/smile thresholds can be calibrated against real device numbers.
+    const cur = stateRef.current.challenges[stateRef.current.currentIndex];
+    if (stateRef.current.phase === 'running' && cur) {
+      console.log(
+        `[Live] ${cur.type} face=${m.facePresent} ear=${m.ear.toFixed(3)} smile=${m.smileRatio.toFixed(3)} yaw=${m.yawDeg.toFixed(1)} passive=${m.passiveLivenessScore.toFixed(2)}`,
+      );
+    }
     const next = advanceLiveness(stateRef.current, frame, config);
     if (next !== stateRef.current) {
       stateRef.current = next;
@@ -112,7 +143,7 @@ export function useLiveness(
       runAtTargetFps(LIVENESS_FPS, () => {
         'worklet';
         if (detModel == null) {
-          onMetrics({ facePresent: false, ear: 0, smileRatio: 0, yawDeg: 0, antiSpoofReal: null });
+          onMetrics({ facePresent: false, ear: 0, smileRatio: 0, yawDeg: 0, antiSpoofReal: null, passiveLivenessScore: 0.8 });
           return;
         }
 
@@ -138,7 +169,7 @@ export function useLiveness(
           if (faces.length > 0) face = faces[0];
         }
         if (face == null) {
-          onMetrics({ facePresent: false, ear: 0, smileRatio: 0, yawDeg: 0, antiSpoofReal: null });
+          onMetrics({ facePresent: false, ear: 0, smileRatio: 0, yawDeg: 0, antiSpoofReal: null, passiveLivenessScore: 0.8 });
           return;
         }
 
@@ -168,22 +199,33 @@ export function useLiveness(
 
         // 3) Passive anti-spoof on a context-padded crop.
         let antiSpoofReal: boolean | null = null;
+        // Fix D: default-pass score used when the passive model is unavailable
+        // or errors at runtime — auth then relies on the active challenges only.
+        let passiveLivenessScore = 0.8;
         if (spoofModel != null) {
-          const crop = expandedCropRect(face.bbox, frame.width, frame.height, ANTISPOOF_CROP_SCALE);
-          const spoofIn = resize(frame, {
-            crop,
-            scale: { width: ANTISPOOF_INPUT_SIZE, height: ANTISPOOF_INPUT_SIZE },
-            pixelFormat: 'rgb',
-            dataType: 'float32',
-          });
-          const spoofOut = spoofModel.runSync([spoofIn]) as Float32Array[];
-          antiSpoofReal = scoreAntiSpoof(new Float32Array(spoofOut[0]), {
-            realClassIndex: config.antiSpoof.realClassIndex,
-            realThreshold: config.antiSpoof.realThreshold,
-          }).real;
+          try {
+            const crop = expandedCropRect(face.bbox, frame.width, frame.height, ANTISPOOF_CROP_SCALE);
+            const spoofIn = resize(frame, {
+              crop,
+              scale: { width: ANTISPOOF_INPUT_SIZE, height: ANTISPOOF_INPUT_SIZE },
+              pixelFormat: 'rgb',
+              dataType: 'float32',
+            });
+            const spoofOut = spoofModel.runSync([spoofIn]) as Float32Array[];
+            const res = scoreAntiSpoof(new Float32Array(spoofOut[0]), {
+              realClassIndex: config.antiSpoof.realClassIndex,
+              realThreshold: config.antiSpoof.realThreshold,
+            });
+            antiSpoofReal = res.real;
+            passiveLivenessScore = res.realScore;
+          } catch {
+            // Model errored at runtime → treat as unavailable, do NOT block auth.
+            antiSpoofReal = null;
+            passiveLivenessScore = 0.8;
+          }
         }
 
-        onMetrics({ facePresent: true, ear, smileRatio: smile, yawDeg: yaw, antiSpoofReal });
+        onMetrics({ facePresent: true, ear, smileRatio: smile, yawDeg: yaw, antiSpoofReal, passiveLivenessScore });
       });
     },
     [detModel, meshModel, spoofModel, anchors, resize, onMetrics, config],

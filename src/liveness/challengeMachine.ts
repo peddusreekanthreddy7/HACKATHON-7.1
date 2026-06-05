@@ -88,11 +88,17 @@ export function advanceLiveness(
     if (!config.antiSpoof.required) {
       return startChallenge(state, 0, frame.now);
     }
-    if (frame.antiSpoofReal === false) {
-      return fail(state, 'spoof-detected'); // photo/screen rejected up front
-    }
+    // Graceful degradation: when the passive model is UNAVAILABLE — failed to
+    // load, or otherwise produced no verdict (antiSpoofReal === null) — do NOT
+    // block authentication. Skip the passive check and fall through to the
+    // active challenges (blink/smile/turn) only. The active challenges are
+    // themselves a strong liveness signal, so auth still works without the
+    // passive model. (A loaded model that returns `false` still rejects below.)
     if (frame.antiSpoofReal === null) {
-      return state; // model unavailable → cannot verify → wait (fail-closed)
+      return startChallenge(state, 0, frame.now);
+    }
+    if (frame.antiSpoofReal === false) {
+      return fail(state, 'spoof-detected'); // model present + verdict fake → reject
     }
     const antiSpoofFrames = state.antiSpoofFrames + 1;
     if (antiSpoofFrames >= config.antiSpoof.requiredFrames) {
