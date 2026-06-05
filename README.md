@@ -40,7 +40,7 @@ field-personnel attendance in **zero-network remote areas**. React Native
 
 | # | Constraint | Status |
 |---|------------|--------|
-| 1 | Cross-platform RN, Android 8+ / iOS | ✅ single RN/TS codebase, **no platform forks**; **Android verified on-device** (vivo I2403); iOS code-complete + configured, builds on macOS/Xcode or cloud CI (GitHub Actions); iOS floor 15.1 (RN 0.85 limit, justified below) |
+| 1 | Cross-platform RN, Android 8+ / iOS | ✅ single RN/TS codebase, **no platform forks**; **Android verified on real device** (vivo I2403); **iOS compiles GREEN in CI** (GitHub Actions macOS + Xcode 16 — all 9 native pods build + `xcodebuild` succeeds); iOS floor 15.1 (RN 0.85 limit, justified below) |
 | 2 | AI footprint ≤ 20 MB | ✅ **6.71 MB** (`npm run verify:models`); `<2 MB` INT8 path in `ml/` |
 | 3 | Recognition + liveness < 1 s | ✅ **173–190 ms** measured on vivo I2403 (Android 16) — >5× under budget |
 | 4 | Fully offline inference | ✅ models bundled; zero network in the inference path |
@@ -99,11 +99,12 @@ the AI pipeline, liveness FSM, encrypted DB, and sync layer are fully shared.
 
 - **Android — demonstrated platform.** Built and verified on a physical device
   (vivo I2403, Android 16): liveness + recognition working end-to-end at ~190 ms.
-- **iOS — code-complete & configured** (Xcode project, `Podfile`,
-  `NSCameraUsageDescription` set). It builds on macOS/Xcode or a cloud macOS runner
-  (GitHub Actions / EAS / Codemagic — no Mac purchase required); a live on-device
-  iOS demo additionally needs an Apple signing identity. Because the codebase is
-  shared and platform-agnostic, iOS behaviour mirrors the verified Android pipeline.
+- **iOS — compiles GREEN in CI** ✅ (GitHub Actions macOS runner + Xcode 16:
+  `pod install` links all 9 native modules and `xcodebuild` succeeds for the iOS
+  Simulator — see [`.github/workflows/ios-build.yml`](.github/workflows/ios-build.yml)
+  and the Actions tab). A live on-device iOS demo additionally needs an Apple
+  signing identity + an iPhone. The shared, platform-agnostic codebase means iOS
+  mirrors the verified Android pipeline. iOS floor 15.1 (RN 0.85 framework limit).
 
 ### Verify / test
 
