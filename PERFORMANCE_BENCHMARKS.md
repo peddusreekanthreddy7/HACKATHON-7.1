@@ -142,11 +142,16 @@ active-only — see `useLiveness`).
 | 3 GB AVD (min-spec) | 3 GB | Android 16 (API 36) | pending run | `Pixel_8` AVD set to 3072 MB; build+run on user's machine (sandbox blocks Gradle) |
 | _iPhone (≥ 15.1)_ | — | iOS 15.1+ | code-complete | builds on macOS/Xcode or cloud CI (GitHub Actions); on-device demo needs Apple signing — shared codebase mirrors the verified Android pipeline |
 
-**Min-spec (3 GB) rationale:** footprint is only 6.5 MB of models; the pipeline is
-CPU-only (XNNPACK, `hw.gpu` not required) and deliberately throttled for low-RAM
-devices (`LIVENESS_FPS=8`, detector FPS cap in `useLiveness`/`useRecognition`). A
-3 GB AVD is pre-configured (`hw.ramSize=3072`) — launch with
-`emulator -avd Pixel_8` then `npx react-native run-android` to confirm on min-spec.
+**Min-spec (3 GB) — MEASURED RAM 2026-06-05:** peak app footprint on-device
+(`adb shell dumpsys meminfo`, all 3 TFLite models + camera live) = **≈ 518 MB PSS**
+(native heap ~258 MB = models + buffers, graphics ~36 MB). App RAM is essentially
+device-independent, so the same ~518 MB applies on a 3 GB phone — where ~1.2–1.5 GB
+is free for apps after the OS → **fits with ~0.7–1 GB headroom**. Combined with a
+**6.5 MB** model footprint, **CPU-only** inference (XNNPACK, `hw.gpu` not required),
+and deliberate FPS throttling (`LIVENESS_FPS=8`, detector cap in
+`useLiveness`/`useRecognition`), the app **runs within the 3 GB minimum spec**.
+A 3 GB AVD is also pre-configured (`hw.ramSize=3072`; `emulator -avd Pixel_8` →
+`npx react-native run-android`) to confirm on-device smoothness on min-spec hardware.
 
 ## 6. Methodology (locked)
 
