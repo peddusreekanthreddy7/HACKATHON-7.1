@@ -1,5 +1,8 @@
 # DatalakeFaceAuth
 
+[![iOS Build](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions/workflows/ios-build.yml/badge.svg)](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions/workflows/ios-build.yml)
+&nbsp; **Android: verified on device** &nbsp;·&nbsp; **56 tests** &nbsp;·&nbsp; **tsc 0 errors** &nbsp;·&nbsp; **100% open-source**
+
 Fully **offline, on-device** facial recognition + liveness detection for
 field-personnel attendance in **zero-network remote areas**. React Native
 (TypeScript), Android **8.0+** and iOS **15.1+**.
@@ -8,6 +11,17 @@ field-personnel attendance in **zero-network remote areas**. React Native
 > challenge-response **and** passive anti-spoof — with **no internet**, store the
 > result encrypted, then sync to AWS only when a network returns and **purge
 > locally only after a confirmed ACK**.
+
+## Results at a glance — every number MEASURED on-device
+
+| Evaluation criterion | Evidence (measured) |
+|----------------------|---------------------|
+| **Innovation (30)** | 4-model on-device pipeline in **6.5 MB** (67% under the 20 MB cap); 5-pt Umeyama alignment; active liveness FSM (blink/smile/turn) **working on device**; INT8 `<2 MB` path documented (`ml/`) |
+| **Feasibility (30)** | **173–190 ms** recognition on a real phone (vivo I2403) — 5× under the 1 s budget; **518 MB** peak RAM → fits 3 GB; **iOS compiles green in CI**; 56 tests, `tsc` clean |
+| **Scalability (20)** | Sync-and-purge: backoff + idempotency + **ACK-then-purge**, integration-tested vs a live server + AWS SAM IaC; **LFW 96.9%**, Indian-demo 90.6%, lighting 83–95% (all measured, `ml/eval_*`) |
+| **Presentation (20)** | This README + [TECHNICAL_DOCUMENTATION](TECHNICAL_DOCUMENTATION.md) + [INTEGRATION_GUIDE](INTEGRATION_GUIDE.md) + [PERFORMANCE_BENCHMARKS](PERFORMANCE_BENCHMARKS.md) + 15-slide deck — all numbers reproducible |
+
+> **Reproduce any number:** `npm test` · `npm run verify:models` · `python ml/eval_lfw_aligned.py` · the iOS build runs live in [GitHub Actions](https://github.com/peddusreekanthreddy7/HACKATHON-7.1/actions).
 
 ---
 

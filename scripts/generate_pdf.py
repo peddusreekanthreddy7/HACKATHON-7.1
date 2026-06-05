@@ -288,8 +288,9 @@ section_box(c, rx, cy - 78*mm, half, 85*mm, title='Passive Anti-Spoof (MiniFASNe
                 'Depth inconsistency detection',
                 'Replay attack detection',
                 '',
-                'Fail-closed: secure default',
-                '  if model missing',
+                'Graceful degradation: active-only',
+                '  if passive model unavailable',
+                '  (authentication never blocked)',
             ], body_size=9.5)
 
 c.setFillColor(TEAL)
@@ -308,13 +309,16 @@ header_bar(c, 'Innovation: Model Compression Pipeline')
 half = (W - 35*mm) / 2
 
 tdata2 = [
-    ['Technique',              'Before', 'After',   'Reduction'],
-    ['INT8 Quantization',      '20MB',   '5MB',     '75%'],
-    ['Magnitude Pruning',      '5MB',    '3.5MB',   '30%'],
-    ['Knowledge Distillation', '—',      'Acc +5%', '—'],
-    ['Total Pipeline',         '20MB',   '6.5MB',   '67%'],
+    ['Model',          'Shipped',     'INT8 path'],
+    ['MobileFaceNet',  '5.23MB FP32', '< 2MB'],
+    ['3 other models', '1.5MB',       '—'],
+    ['Total stack',    '6.5MB',       '67% under 20MB'],
 ]
-draw_table(c, tdata2, [140, 50, 50, 70], 14*mm, H-45*mm, row_height=18, font_size=9.5)
+draw_table(c, tdata2, [120, 95, 105], 14*mm, H-45*mm, row_height=18, font_size=9.5)
+c.setFont('Helvetica-Oblique', 8)
+c.setFillColor(colors.HexColor('#666666'))
+c.drawString(14*mm, H-45*mm - 4*18 - 9,
+    'Ships FP32 (already 67% under budget); INT8 pipeline (ml/quantize.py) projects <2MB — see COMPRESSION_REPORT.md')
 
 c.setFont('Helvetica-Bold', 11)
 c.setFillColor(TEAL_DARK)
@@ -402,7 +406,7 @@ header_bar(c, '6-Layer Security Architecture')
 boxes = [
     ('SQLCipher AES-256',    'Full database encryption at rest'),
     ('Embeddings Only',      'Raw face images never stored\nor transmitted'),
-    ('Fail-Closed Anti-Spoof','Secure default when\nmodel unavailable'),
+    ('Graceful-Degrade Liveness','Active-only fallback when\npassive model unavailable'),
     ('Idempotency Keys',     'Prevent replay attacks\non sync uploads'),
     ('Device Binding',       'Device fingerprint in\nevery record'),
     ('Serverless AWS SAM',   'No server to compromise,\nno idle cost'),
@@ -426,23 +430,25 @@ new_page(c, 10)
 # ─────────────────────────────────────────────────────────────
 header_bar(c, 'Performance Benchmarks — All Constraints Met')
 bench = [
-    ['Constraint',       'Required',    'Achieved',    'Status'],
-    ['Model Size',       '< 20MB',      '6.5MB',       'PASS'],
-    ['Face Detection',   '—',           '45ms',        'Fast'],
-    ['Face Landmark',    '—',           '120ms',       'Fast'],
-    ['Recognition',      '—',           '280ms',       'Fast'],
-    ['Total Pipeline',   '< 1000ms',    '668ms',       'PASS'],
-    ['Accuracy',         '> 95%',       '95.9% avg',   'PASS'],
-    ['Android',          '8.0+ API26',  'API 26+',     'PASS'],
-    ['iOS',              '12+*',        '15.1+*',      'PASS*'],
-    ['RAM',              '3GB min',     '3GB devices', 'PASS'],
-    ['Open Source',      '100%',        '100%',        'PASS'],
+    ['Constraint',        'Required',    'MEASURED',          'Status'],
+    ['Model footprint',   '< 20MB',      '6.5MB',             'PASS'],
+    ['Recognition E2E',   '< 1000ms',    '173-190ms',         'PASS'],
+    ['  face detect',     '—',           '93-116ms',          ''],
+    ['  landmarks',       '—',           '19-22ms',           ''],
+    ['  align+embed+match','—',          '~55ms',             ''],
+    ['Accuracy (LFW)',    '> 95%',       '96.9%',             'PASS'],
+    ['Peak RAM',          '3GB device',  '518MB (fits)',      'PASS'],
+    ['Android',           '8.0+ API26',  'verified device',   'PASS'],
+    ['iOS build',         '12+*',        '15.1 CI-green',     'PASS*'],
+    ['Open Source',       '100%',        '100% permissive',   'PASS'],
 ]
-draw_table(c, bench, [130, 90, 90, 70], 14*mm, H-45*mm, row_height=16, font_size=9)
-c.setFont('Helvetica-Oblique', 8)
+draw_table(c, bench, [130, 88, 100, 62], 14*mm, H-42*mm, row_height=14, font_size=8.3)
+c.setFont('Helvetica-Oblique', 7.5)
 c.setFillColor(colors.HexColor('#666666'))
-c.drawString(14*mm, H - 45*mm - len(bench)*16 - 8,
-    '*React Native 0.85.x and vision-camera v4 require iOS 15.1 minimum — documented deviation')
+c.drawString(14*mm, H - 42*mm - len(bench)*14 - 7,
+    'Measured on vivo I2403 (Android 16). Indian-demo 90.6% + lighting 83-95% measured separately (res-limited, fine-tune path) — see PERFORMANCE_BENCHMARKS.md.')
+c.drawString(14*mm, H - 42*mm - len(bench)*14 - 17,
+    '*RN 0.85 + vision-camera v4 require iOS 15.1 minimum (framework limit, justified). iOS compiles green in GitHub Actions CI.')
 new_page(c, 11)
 
 # ─────────────────────────────────────────────────────────────
@@ -528,27 +534,27 @@ qw = (W - 42*mm) / 2
 qh = 80*mm
 qs = [
     ('Innovation  (30 marks)', [
-        '3-model liveness fusion',
-        'INT8 quantization — 67% under limit',
-        '5-point Umeyama face alignment',
-        'Worklet-safe real-time AI pipeline',
+        '4-model edge pipeline — 6.5MB (67% under)',
+        'Active liveness FSM (blink/smile/turn)',
+        '5-point Umeyama alignment (96.9% LFW)',
+        'INT8 <2MB path documented (ml/)',
     ]),
     ('Feasibility  (30 marks)', [
-        'Runs on real Android device (tested)',
-        '668ms total pipeline (< 1s)',
+        'Real Android device: 173-190ms (< 1s)',
+        'iOS compiles green in CI (Xcode 16)',
+        '518MB RAM — fits 3GB devices',
         '56 passing tests, 0 TS errors',
-        'Works on 3GB RAM devices',
     ]),
     ('Scalability  (20 marks)', [
-        'ACK-then-purge bounded storage',
-        'AWS SAM serverless (scales to M+)',
-        'Idempotent uploads — no duplicates',
-        '1:N matching — large employee DBs',
+        'ACK-then-purge bounded storage (tested)',
+        'AWS SAM serverless + idempotent sync',
+        'LFW 96.9%; lighting/demo measured',
+        '1:N cosine matching — large DBs',
     ]),
     ('Documentation  (20 marks)', [
-        '15-slide presentation (this deck)',
-        'TECHNICAL_DOCUMENTATION.md',
+        '15-slide deck + TECHNICAL_DOCUMENTATION',
         'INTEGRATION_GUIDE.md (Datalake 3.0)',
+        'PERFORMANCE_BENCHMARKS (measured)',
         'LICENSES.md — complete OSS audit',
     ]),
 ]
@@ -581,8 +587,8 @@ c.drawCentredString(W/2, H/2 + 16*mm, 'Secure.  Offline.  Accurate.')
 
 # stats
 stats_x = [W/2 - 100*mm, W/2, W/2 + 100*mm]
-stat_vals = ['6.5MB', '668ms', '56 Tests']
-stat_labs = ['Model Size', 'Pipeline Speed', 'Verified']
+stat_vals = ['6.5MB', '190ms', '96.9%']
+stat_labs = ['Model Size', 'Recognition', 'LFW Accuracy']
 for sx, sv, sl in zip(stats_x, stat_vals, stat_labs):
     c.setFont('Helvetica-Bold', 22)
     c.setFillColor(TEAL)
